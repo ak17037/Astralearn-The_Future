@@ -1,0 +1,15 @@
+﻿    body {
+      margin-left: 50px;
+      cursor: pointer;
+    }
+    p {
+      margin-bottom: 4px;
+      margin-left: 5px;
+    }
+    input {
+      padding: 5px;
+      border-radius: 5px;
+    }
+    #button {
+      margin-top: 15px;
+    }
