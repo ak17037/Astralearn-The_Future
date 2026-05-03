@@ -4,12 +4,14 @@ let users = [];
 let tasks = [];
 let courses = [];
 let attendance = [];
+let schedule = [];
 let currentQuiz = null;
 let currentQuestionIndex = 0;
 let quizAnswers = {};
 let quizTimer = null;
 let timeRemaining = 120;
 let communityPosts = [];
+let currentTaskFilter = 'all';
 
 // Initialize app on page load
 window.onload = function() {
@@ -156,23 +158,40 @@ function showMainApp() {
     document.getElementById('loginPage').style.display = 'none';
     document.getElementById('signupPage').style.display = 'none';
     document.getElementById('mainApp').style.display = 'flex';
-    
+
     // Update user name
     document.getElementById('userName').textContent = currentUser.name;
     document.getElementById('welcomeName').textContent = currentUser.name.split(' ')[0];
-    
+
     // Load user data
     tasks = currentUser.tasks || [];
     courses = currentUser.courses || getDefaultCourses();
     attendance = currentUser.attendance || [];
     communityPosts = currentUser.communityPosts || getDefaultCommunityPosts();
-    
+    schedule = currentUser.schedule || [];
+
+    // Sync avatar across all avatar elements
+    const avatarSrc = currentUser.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(currentUser.name) + '&background=random';
+    ['headerAvatar','settingsAvatar','communityUserAvatar','profileMenuAvatar'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.src = avatarSrc;
+    });
+
+    // Sync profile dropdown info
+    const pmName = document.getElementById('profileMenuName');
+    const pmEmail = document.getElementById('profileMenuEmail');
+    const pmInstitute = document.getElementById('profileMenuInstitute');
+    if (pmName) pmName.textContent = currentUser.name;
+    if (pmEmail) pmEmail.textContent = currentUser.email;
+    if (pmInstitute) pmInstitute.textContent = currentUser.institute || '';
+
     // Show dashboard
     showPage('dashboard');
     loadCourses();
     loadTasks();
     loadAttendance();
     loadCommunityFeed();
+    updateDashboardStats();
 }
 
 // Get default courses
@@ -254,6 +273,7 @@ function showPage(pageName) {
         'dashboard': 'Dashboard',
         'courses': 'My Courses',
         'todo': 'To-Do List',
+        'scheduler': '📅 Scheduler',
         'quiz': 'Quiz',
         'attendance': 'Attendance',
         'settings': 'Settings',
@@ -263,9 +283,8 @@ function showPage(pageName) {
     if (titles[pageName]) document.getElementById('pageTitle').textContent = titles[pageName];
     
     // Load page specific data
-    if (pageName === 'settings') {
-        loadSettings();
-    }
+    if (pageName === 'settings') loadSettings();
+    if (pageName === 'scheduler') loadScheduler();
 }
 
 // Load courses
@@ -332,51 +351,72 @@ function updateProgress(courseId) {
     }
 }
 
-// Load tasks
-function loadTasks() {
+// Load tasks (with filter and priority badge support)
+function loadTasks(filter) {
+    if (filter !== undefined) currentTaskFilter = filter;
     const taskList = document.getElementById('taskList');
-    
-    if (tasks.length === 0) {
-        taskList.innerHTML = '<p class="empty-msg">No tasks yet. Add your first task!</p>';
+
+    // Update filter tabs UI
+    document.querySelectorAll('.filter-tab').forEach(btn => btn.classList.remove('active'));
+    const activeTab = document.getElementById('filter-' + currentTaskFilter);
+    if (activeTab) activeTab.classList.add('active');
+
+    let filtered = tasks;
+    if (currentTaskFilter === 'active')    filtered = tasks.filter(t => !t.done);
+    if (currentTaskFilter === 'completed') filtered = tasks.filter(t => t.done);
+
+    if (filtered.length === 0) {
+        taskList.innerHTML = '<p class="empty-msg">No tasks here! 🎉</p>';
+        updateDashboardStats();
         return;
     }
-    
+
     taskList.innerHTML = '';
-    
-    tasks.forEach((task, index) => {
+    const priorityColors = { high: '#EF4444', medium: '#F59E0B', low: '#10B981' };
+
+    filtered.forEach(task => {
+        const realIndex = tasks.indexOf(task);
         const taskItem = document.createElement('div');
         taskItem.className = 'task-item' + (task.done ? ' completed' : '');
-        
+        const pc = priorityColors[task.priority || 'medium'];
+        const dueStr = task.dueDate ? `<span class="task-due">📅 ${task.dueDate}</span>` : '';
         taskItem.innerHTML = `
-            <input type="checkbox" ${task.done ? 'checked' : ''} onchange="toggleTask(${index})">
-            <label>${task.text}</label>
-            <button class="task-delete" onclick="deleteTask(${index})">Delete</button>
+            <span class="priority-dot" style="background:${pc}" title="${task.priority || 'medium'} priority"></span>
+            <input type="checkbox" ${task.done ? 'checked' : ''} onchange="toggleTask(${realIndex})">
+            <div class="task-text-wrap">
+                <label>${task.text}</label>
+                ${dueStr}
+            </div>
+            <button class="task-delete" onclick="deleteTask(${realIndex})">✕</button>
         `;
-        
         taskList.appendChild(taskItem);
     });
+    updateDashboardStats();
 }
 
 // Add new task
 function addTask() {
     const input = document.getElementById('taskInput');
     const text = input.value.trim();
-    
+    const priorityEl = document.getElementById('taskPriority');
+    const dueDateEl  = document.getElementById('taskDueDate');
+    const priority = priorityEl ? priorityEl.value : 'medium';
+    const dueDate  = dueDateEl  ? dueDateEl.value  : '';
+
     if (!text) {
-        alert('Please enter a task');
+        showToast('Please enter a task 📝', 'error');
         return;
     }
-    
-    tasks.push({
-        text: text,
-        done: false
-    });
-    
+
+    tasks.push({ text, done: false, priority, dueDate, createdAt: new Date().toISOString() });
     input.value = '';
-    
+    if (dueDateEl) dueDateEl.value = '';
+    if (priorityEl) priorityEl.value = 'medium';
+
     currentUser.tasks = tasks;
     updateUserData();
     loadTasks();
+    showToast('Task added! ✅');
 }
 
 // Toggle task completion
@@ -563,12 +603,11 @@ function markAttendance() {
     };
     
     attendance.push(record);
-    
+
     currentUser.attendance = attendance;
     updateUserData();
     loadAttendance();
-    
-    alert('Attendance marked successfully!');
+    showToast('Attendance marked successfully! 📝');
 }
 
 // Load attendance
@@ -636,14 +675,22 @@ function saveSettings() {
     currentUser.name = name;
     currentUser.email = email;
     currentUser.institute = institute;
-    
+
     updateUserData();
-    
+
     // Update display
     document.getElementById('userName').textContent = name;
     document.getElementById('welcomeName').textContent = name.split(' ')[0];
-    
-    alert('Settings saved successfully!');
+
+    // Keep profile dropdown in sync
+    const pmName = document.getElementById('profileMenuName');
+    const pmEmail = document.getElementById('profileMenuEmail');
+    const pmInstitute = document.getElementById('profileMenuInstitute');
+    if (pmName) pmName.textContent = name;
+    if (pmEmail) pmEmail.textContent = email;
+    if (pmInstitute) pmInstitute.textContent = institute;
+
+    showToast('Profile saved successfully! ✅');
 }
 
 // Update user data in storage
@@ -676,7 +723,7 @@ function addNewCourse() {
     const link = document.getElementById('newCourseLink').value;
     
     if(!title) {
-        alert("Course title is required!");
+        showToast('Course title is required!', 'error');
         return;
     }
     
@@ -714,7 +761,7 @@ function saveCourseNotes() {
         course.notes = notesBox.value;
         currentUser.courses = courses;
         updateUserData();
-        alert('Notes saved successfully!');
+        showToast('Notes saved! 📝');
     }
 }
 
@@ -735,12 +782,18 @@ function toggleNotifications() {
     document.getElementById('notifBadge').style.display = 'none'; // hide badge after viewing
 }
 
-// Close dropdown when clicking outside
+// Close dropdowns when clicking outside
 document.addEventListener('click', function(event) {
-    const container = document.querySelector('.notification-container');
-    const dropdown = document.getElementById('notifDropdown');
-    if (container && dropdown && !container.contains(event.target)) {
-        dropdown.style.display = 'none';
+    // Notification dropdown
+    const notifContainer = document.querySelector('.notification-container');
+    const notifDropdown  = document.getElementById('notifDropdown');
+    if (notifContainer && notifDropdown && !notifContainer.contains(event.target)) {
+        notifDropdown.style.display = 'none';
+    }
+    // Profile dropdown
+    const profileTrigger = document.getElementById('profileTrigger');
+    if (profileTrigger && !profileTrigger.contains(event.target)) {
+        closeProfileMenu();
     }
 });
 
@@ -749,20 +802,27 @@ function handleAvatarUpload(event) {
     if (file) {
         const reader = new FileReader();
         reader.onload = function(e) {
-            document.getElementById('settingsAvatar').src = e.target.result;
-            document.getElementById('headerAvatar').src = e.target.result;
-            currentUser.avatar = e.target.result;
+            const src = e.target.result;
+            ['settingsAvatar','headerAvatar','communityUserAvatar'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.src = src;
+            });
+            currentUser.avatar = src;
             updateUserData();
+            showToast('Avatar updated! 😊');
         }
         reader.readAsDataURL(file);
     }
 }
 
 function selectAvatar(src) {
-    document.getElementById('settingsAvatar').src = src;
-    document.getElementById('headerAvatar').src = src;
+    ['settingsAvatar','headerAvatar','communityUserAvatar'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.src = src;
+    });
     currentUser.avatar = src;
     updateUserData();
+    showToast('Avatar updated! 😊');
 }
 
 function changePassword() {
@@ -772,19 +832,19 @@ function changePassword() {
         if(newPass.length >= 6) {
             currentUser.password = newPass;
             updateUserData();
-            alert("Password updated successfully!");
+            showToast('Password updated successfully! 🔒');
             document.getElementById('currentPassword').value = '';
             document.getElementById('newPassword').value = '';
         } else {
-            alert("New password must be at least 6 characters.");
+            showToast('New password must be at least 6 characters.', 'error');
         }
     } else {
-        alert("Incorrect current password.");
+        showToast('Incorrect current password.', 'error');
     }
 }
 
 function savePreferences() {
-    alert("Preferences saved successfully!");
+    showToast('Preferences saved! ⚙️');
 }
 
 function toggleDarkMode() {
@@ -810,10 +870,13 @@ function toggleDarkMode() {
 
 // To-Do Clear function
 function clearCompletedTasks() {
+    const count = tasks.filter(t => t.done).length;
+    if (count === 0) { showToast('No completed tasks to clear', 'info'); return; }
     tasks = tasks.filter(t => !t.done);
     currentUser.tasks = tasks;
     updateUserData();
     loadTasks();
+    showToast(count + ' completed task(s) cleared 🗏️');
 }
 
 // ============================================
@@ -824,134 +887,147 @@ function getDefaultCommunityPosts() {
     return [
         {
             id: 1,
-            author: "System",
-            text: "Welcome to the StudentOS Community! Feel free to share your thoughts here.",
-            likes: 5,
-            likedByMe: false,
-            comments: []
+            author: 'System',
+            text: 'Welcome to the StudentOS Community! 🎉 Feel free to share your thoughts here.',
+            likes: 5, likedByMe: false, comments: [],
+            category: 'general', createdAt: new Date(Date.now() - 3600000 * 5).toISOString()
         },
         {
             id: 2,
-            author: "Jane Smith",
-            text: "Does anyone have good resources for learning React Hooks?",
-            likes: 12,
-            likedByMe: true,
-            comments: [
-                {
-                    id: 201,
-                    author: "Alex",
-                    text: "Check out CodeWithHarry's latest playlist!",
-                    likes: 3,
-                    likedByMe: false
-                }
-            ]
+            author: 'Jane Smith',
+            text: 'Does anyone have good resources for learning React Hooks?',
+            likes: 12, likedByMe: true,
+            category: 'question', createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
+            comments: [{
+                id: 201, author: 'Alex',
+                text: 'Check out CodeWithHarry\'s latest playlist! Really helpful 👍',
+                likes: 3, likedByMe: false,
+                createdAt: new Date(Date.now() - 3600000).toISOString()
+            }]
         }
     ];
 }
 
 function loadCommunityFeed() {
     const feed = document.getElementById('communityFeed');
-    if(!feed) return;
-    
+    if (!feed) return;
     feed.innerHTML = '';
-    
-    // Sort posts: newest first
-    const sortedPosts = [...communityPosts].reverse();
-    
-    sortedPosts.forEach(post => {
+
+    const categoryMeta = {
+        general: { label: '💬 General', color: '#6366F1' },
+        question: { label: '❓ Question', color: '#F59E0B' },
+        resource: { label: '📚 Resource', color: '#10B981' },
+        achievement: { label: '🏆 Achievement', color: '#EF4444' }
+    };
+
+    const sorted = [...communityPosts].reverse();
+
+    sorted.forEach(post => {
+        const cat = categoryMeta[post.category] || categoryMeta.general;
         const postCard = document.createElement('div');
         postCard.className = 'post-card';
-        
-        let commentsHTML = '';
-        if(post.comments && post.comments.length > 0) {
-            post.comments.forEach(comment => {
-                commentsHTML += `
-                    <div class="comment-item">
-                        <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(comment.author)}&background=random" alt="Avatar">
-                        <div class="comment-box">
-                            <h5>${comment.author}</h5>
-                            <p>${comment.text}</p>
-                            <div class="comment-actions">
-                                <button class="action-btn ${comment.likedByMe ? 'liked' : ''}" onclick="toggleLike(${post.id}, ${comment.id})">
-                                    ${comment.likedByMe ? '❤️' : '🤍'} ${comment.likes}
-                                </button>
-                            </div>
-                        </div>
+        const commentCount = (post.comments || []).length;
+
+        let commentsHTML = (post.comments || []).map(c => `
+            <div class="comment-item">
+                <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(c.author)}&background=random&size=32" alt="">
+                <div class="comment-box">
+                    <div class="comment-meta">
+                        <h5>${c.author}</h5>
+                        <small>${timeAgo(c.createdAt)}</small>
                     </div>
-                `;
-            });
-        }
-        
+                    <p>${c.text}</p>
+                    <button class="action-btn ${c.likedByMe ? 'liked' : ''}" onclick="toggleLike(${post.id}, ${c.id})">
+                        ${c.likedByMe ? '❤️' : '🤍'} ${c.likes}
+                    </button>
+                </div>
+            </div>`).join('');
+
         postCard.innerHTML = `
             <div class="post-header">
-                <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(post.author)}&background=random" alt="Avatar">
-                <div>
-                    <h4>${post.author}</h4>
-                    <small>Just now</small>
+                <div class="post-avatar-wrap">
+                    <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(post.author)}&background=random&size=40" alt="">
                 </div>
+                <div class="post-author-info">
+                    <h4>${post.author}</h4>
+                    <small>${timeAgo(post.createdAt)}</small>
+                </div>
+                <span class="category-pill" style="background:${cat.color}20; color:${cat.color}; border:1px solid ${cat.color}40">${cat.label}</span>
             </div>
-            <div class="post-content">
-                ${post.text}
-            </div>
+            <div class="post-content">${post.text}</div>
             <div class="post-actions">
-                <button class="action-btn ${post.likedByMe ? 'liked' : ''}" onclick="toggleLike(${post.id})">
-                    ${post.likedByMe ? '❤️' : '🤍'} ${post.likes} Likes
+                <button class="action-btn like-btn ${post.likedByMe ? 'liked' : ''}" onclick="toggleLike(${post.id})">
+                    ${post.likedByMe ? '❤️' : '🤍'} <span>${post.likes}</span> Like
+                </button>
+                <button class="action-btn" onclick="toggleComments(${post.id})">
+                    💬 ${commentCount} Comment${commentCount !== 1 ? 's' : ''}
                 </button>
             </div>
-            <div class="comments-section">
-                ${commentsHTML}
-                <div style="display: flex; gap: 10px; margin-top: 10px;">
-                    <input type="text" id="commentInput_${post.id}" placeholder="Write a comment..." class="input-field" style="margin: 0; flex: 1; padding: 8px; font-size: 13px;">
-                    <button onclick="addComment(${post.id})" class="btn-primary" style="margin: 0; width: auto; padding: 8px 15px; font-size: 13px;">Reply</button>
+            <div class="comments-section" id="comments-${post.id}" style="display:none;">
+                <div class="comments-list">${commentsHTML}</div>
+                <div class="comment-input-row">
+                    <input type="text" id="commentInput_${post.id}" placeholder="Write a comment..." class="input-field comment-input"
+                        onkeypress="if(event.key==='Enter') addComment(${post.id})">
+                    <button onclick="addComment(${post.id})" class="btn-primary comment-submit">→</button>
                 </div>
-            </div>
-        `;
+            </div>`;
+
         feed.appendChild(postCard);
     });
+}
+
+function toggleComments(postId) {
+    const section = document.getElementById('comments-' + postId);
+    if (!section) return;
+    section.style.display = section.style.display === 'none' ? 'block' : 'none';
 }
 
 function addPost() {
     const textInput = document.getElementById('newPostText');
     const text = textInput.value.trim();
-    if(!text) return;
-    
+    const categoryEl = document.getElementById('postCategory');
+    const category = categoryEl ? categoryEl.value : 'general';
+    if (!text) { showToast('Please write something first ✏️', 'error'); return; }
+
     const newPost = {
-        id: Date.now(),
-        author: currentUser.name,
-        text: text,
-        likes: 0,
-        likedByMe: false,
-        comments: []
+        id: Date.now(), author: currentUser.name, text, likes: 0,
+        likedByMe: false, comments: [], category,
+        createdAt: new Date().toISOString()
     };
-    
+
     communityPosts.push(newPost);
     currentUser.communityPosts = communityPosts;
     updateUserData();
-    
     textInput.value = '';
     loadCommunityFeed();
+    showToast('Post shared! 🚀');
 }
 
 function addComment(postId) {
     const input = document.getElementById('commentInput_' + postId);
     const text = input.value.trim();
-    if(!text) return;
-    
+    if (!text) return;
+
     const post = communityPosts.find(p => p.id === postId);
-    if(post) {
-        if(!post.comments) post.comments = [];
+    if (post) {
+        if (!post.comments) post.comments = [];
         post.comments.push({
             id: Date.now(),
             author: currentUser.name,
             text: text,
             likes: 0,
-            likedByMe: false
+            likedByMe: false,
+            createdAt: new Date().toISOString()
         });
         currentUser.communityPosts = communityPosts;
         updateUserData();
         loadCommunityFeed();
+        // Keep comment section visible after reload
+        const section = document.getElementById('comments-' + postId);
+        if (section) section.style.display = 'block';
     }
 }
+
 
 function toggleLike(postId, commentId = null) {
     const post = communityPosts.find(p => p.id === postId);
@@ -984,7 +1060,140 @@ function toggleLike(postId, commentId = null) {
 
 // To-Do Enter key support
 document.getElementById('taskInput').addEventListener('keypress', function (e) {
-    if (e.key === 'Enter') {
-        addTask();
-    }
+    if (e.key === 'Enter') addTask();
 });
+
+// ============================================
+// PROFILE DROPDOWN
+// ============================================
+function toggleProfileMenu() {
+    const trigger  = document.getElementById('profileTrigger');
+    const dropdown = document.getElementById('profileMenu');
+    if (!trigger || !dropdown) return;
+    const isOpen = dropdown.classList.contains('visible');
+    if (isOpen) {
+        closeProfileMenu();
+    } else {
+        dropdown.classList.add('visible');
+        trigger.classList.add('open');
+    }
+}
+
+function closeProfileMenu() {
+    const trigger  = document.getElementById('profileTrigger');
+    const dropdown = document.getElementById('profileMenu');
+    if (dropdown) dropdown.classList.remove('visible');
+    if (trigger)  trigger.classList.remove('open');
+}
+
+// ============================================
+// TOAST NOTIFICATION
+// ============================================
+function showToast(msg, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-' + type;
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.classList.add('show'), 10);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+// ============================================
+// DASHBOARD STATS (live)
+// ============================================
+function updateDashboardStats() {
+    const pending = tasks.filter(t => !t.done).length;
+    const el1 = document.getElementById('dashPendingTasks');
+    if (el1) el1.textContent = pending;
+
+    const el2 = document.getElementById('dashCourses');
+    if (el2) el2.textContent = courses.length;
+
+    const present = attendance.filter(a => a.status === 'present').length;
+    const total   = attendance.length;
+    const pct     = total > 0 ? Math.round((present / total) * 100) : 85;
+    const el3 = document.getElementById('dashAttendance');
+    if (el3) el3.textContent = pct + '%';
+}
+
+// ============================================
+// TIME AGO HELPER
+// ============================================
+function timeAgo(isoDate) {
+    if (!isoDate) return 'Just now';
+    const diff = (Date.now() - new Date(isoDate)) / 1000;
+    if (diff < 60)    return 'Just now';
+    if (diff < 3600)  return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    return Math.floor(diff / 86400) + 'd ago';
+}
+
+// ============================================
+// SCHEDULER
+// ============================================
+function loadScheduler() {
+    schedule = currentUser.schedule || [];
+    renderWeekGrid();
+}
+
+function renderWeekGrid() {
+    const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    const grid = document.getElementById('weekGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    days.forEach(day => {
+        const dayEvents = schedule.filter(e => e.day === day);
+        const col = document.createElement('div');
+        col.className = 'day-col';
+
+        const eventsHTML = dayEvents.length
+            ? dayEvents.map(evt => `
+                <div class="event-chip" style="background:${evt.color}18; border-left:3px solid ${evt.color};">
+                    <div class="event-chip-title">${evt.title}</div>
+                    <div class="event-chip-time">${evt.start} – ${evt.end}</div>
+                    <button class="event-delete" onclick="deleteScheduleEvent(${evt.id})">✕</button>
+                </div>`).join('')
+            : '<p class="no-event">Free</p>';
+
+        col.innerHTML = `
+            <div class="day-header">${day.substring(0, 3)}<span class="day-full">${day}</span></div>
+            <div class="day-events">${eventsHTML}</div>`;
+        grid.appendChild(col);
+    });
+}
+
+function addScheduleEvent() {
+    const title = document.getElementById('schedTitle').value.trim();
+    const day   = document.getElementById('schedDay').value;
+    const start = document.getElementById('schedStart').value;
+    const end   = document.getElementById('schedEnd').value;
+    const color = document.getElementById('schedColor').value;
+
+    if (!title || !day || !start || !end) {
+        showToast('Please fill all event fields 📅', 'error');
+        return;
+    }
+
+    schedule.push({ id: Date.now(), title, day, start, end, color });
+    currentUser.schedule = schedule;
+    updateUserData();
+
+    document.getElementById('schedTitle').value = '';
+    document.getElementById('schedStart').value = '';
+    document.getElementById('schedEnd').value   = '';
+
+    renderWeekGrid();
+    showToast('Event added to schedule! 📅');
+}
+
+function deleteScheduleEvent(id) {
+    schedule = schedule.filter(e => e.id !== id);
+    currentUser.schedule = schedule;
+    updateUserData();
+    renderWeekGrid();
+    showToast('Event removed');
+}
