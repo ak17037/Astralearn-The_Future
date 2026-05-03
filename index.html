@@ -47,15 +47,17 @@
         <div class="sidebar">
             <h2>StudentOS</h2>
             <ul class="menu">
-                <li><a href="#" onclick="showPage('dashboard')" class="menu-item active" id="menu-dashboard">Dashboard</a></li>
-                <li><a href="#" onclick="showPage('courses')" class="menu-item" id="menu-courses">My Courses</a></li>
-                <li><a href="#" onclick="showPage('todo')" class="menu-item" id="menu-todo">To-Do List</a></li>
-                <li><a href="#" onclick="showPage('quiz')" class="menu-item" id="menu-quiz">Quiz</a></li>
-                <li><a href="#" onclick="showPage('attendance')" class="menu-item" id="menu-attendance">Attendance</a></li>
-                <li><a href="#" onclick="showPage('community')" class="menu-item" id="menu-community">Community</a></li>
-                <li><a href="#" onclick="showPage('settings')" class="menu-item" id="menu-settings">Settings</a></li>
+                <li><a href="#" onclick="showPage('dashboard')" class="menu-item active" id="menu-dashboard">🏠 Dashboard</a></li>
+                <li><a href="#" onclick="showPage('courses')" class="menu-item" id="menu-courses">📚 My Courses</a></li>
+                <li><a href="#" onclick="showPage('todo')" class="menu-item" id="menu-todo">📝 To-Do List</a></li>
+                <li><a href="#" onclick="showPage('scheduler')" class="menu-item" id="menu-scheduler">📅 Scheduler</a></li>
+                <li><a href="#" onclick="showPage('quiz')" class="menu-item" id="menu-quiz">🧠 Quiz</a></li>
+                <li><a href="#" onclick="showPage('attendance')" class="menu-item" id="menu-attendance">✅ Attendance</a></li>
+                <li><a href="#" onclick="showPage('community')" class="menu-item" id="menu-community">💬 Community</a></li>
+                <li><a href="#" onclick="showPage('settings')" class="menu-item" id="menu-settings">⚙️ Settings</a></li>
             </ul>
-            <button onclick="logout()" class="btn-logout">Logout</button>
+            <div class="sidebar-logout-sep"></div>
+            <button onclick="logout()" class="btn-logout">🚪 Logout</button>
         </div>
 
         <!-- Main Content -->
@@ -73,10 +75,35 @@
                             <div style="font-size: 12px;">- Reminder: Complete your Quiz</div>
                         </div>
                     </div>
-                    <img id="headerAvatar" src="https://ui-avatars.com/api/?name=User&background=random" style="width: 35px; height: 35px; border-radius: 50%; object-fit: cover;">
-                    <span id="userName">User</span>
-                </div>
-            </div>
+                    <!-- Profile Trigger with Dropdown -->
+                    <div class="profile-trigger" id="profileTrigger">
+                        <!-- Clickable header part only -->
+                        <div class="profile-trigger-btn" onclick="toggleProfileMenu()">
+                            <img id="headerAvatar" src="https://ui-avatars.com/api/?name=User&background=random" class="header-avatar" alt="Avatar">
+                            <span id="userName">User</span>
+                            <span class="profile-caret">▾</span>
+                        </div>
+                        <!-- Profile Dropdown -->
+                        <div id="profileMenu" class="profile-dropdown">
+                            <div class="profile-menu-user">
+                                <img id="profileMenuAvatar" src="https://ui-avatars.com/api/?name=User&background=random" class="profile-menu-avatar" alt="Avatar">
+                                <div class="profile-menu-info">
+                                    <strong id="profileMenuName">User</strong>
+                                    <small id="profileMenuEmail">—</small>
+                                    <small id="profileMenuInstitute"></small>
+                                </div>
+                            </div>
+                            <div class="profile-menu-divider"></div>
+                            <button class="profile-menu-btn" onclick="showPage('dashboard'); closeProfileMenu()">🏠 Dashboard</button>
+                            <button class="profile-menu-btn" onclick="showPage('settings'); closeProfileMenu()">⚙️ Settings &amp; Profile</button>
+                            <button class="profile-menu-btn" onclick="showPage('courses'); closeProfileMenu()">📚 My Courses</button>
+                            <div class="profile-menu-divider"></div>
+                            <button class="profile-menu-btn profile-menu-logout" onclick="logout()">🚪 Sign Out</button>
+                        </div>
+                    </div>
+                </div><!-- /.user-info -->
+            </div><!-- /.header -->
+
 
             <!-- Dashboard Page -->
             <div id="page-dashboard" class="content-page">
@@ -156,40 +183,76 @@
             <!-- To-Do Page -->
             <div id="page-todo" class="content-page" style="display: none;">
                 <div class="section">
-                    <h3>Add New Task</h3>
-                    <div class="todo-add">
+                    <h3>✅ Add New Task</h3>
+                    <div class="todo-add-grid">
                         <input type="text" id="taskInput" placeholder="What needs to be done?" class="input-field">
-                        <button onclick="addTask()" class="btn-primary">Add Task</button>
+                        <select id="taskPriority" class="input-field">
+                            <option value="medium">⚡ Medium Priority</option>
+                            <option value="high">🔴 High Priority</option>
+                            <option value="low">🟢 Low Priority</option>
+                        </select>
+                        <input type="date" id="taskDueDate" class="input-field">
+                        <button onclick="addTask()" class="btn-primary" style="margin:0;">Add Task</button>
                     </div>
                 </div>
-
                 <div class="section">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                         <h3 style="margin: 0;">Your Tasks</h3>
-                        <button onclick="clearCompletedTasks()" class="btn-secondary" style="width: auto; margin: 0; padding: 5px 10px; font-size: 12px;">Clear Completed</button>
+                        <button onclick="clearCompletedTasks()" class="btn-secondary" style="width: auto; margin: 0; padding: 6px 12px; font-size: 12px;">Clear Completed</button>
                     </div>
-                    <div id="taskList" class="task-list">
-                        <!-- Tasks will be loaded here -->
+                    <div class="filter-tabs">
+                        <button id="filter-all" class="filter-tab active" onclick="loadTasks('all')">All</button>
+                        <button id="filter-active" class="filter-tab" onclick="loadTasks('active')">Active</button>
+                        <button id="filter-completed" class="filter-tab" onclick="loadTasks('completed')">Completed</button>
                     </div>
+                    <div id="taskList" class="task-list"></div>
+                </div>
+            </div>
+
+            <!-- Scheduler Page -->
+            <div id="page-scheduler" class="content-page" style="display: none;">
+                <div class="section">
+                    <h3>➕ Add New Event</h3>
+                    <div class="sched-form-grid">
+                        <input type="text" id="schedTitle" placeholder="Event title (e.g. Math Class)" class="input-field">
+                        <select id="schedDay" class="input-field">
+                            <option value="">📅 Select Day</option>
+                            <option>Monday</option><option>Tuesday</option><option>Wednesday</option>
+                            <option>Thursday</option><option>Friday</option><option>Saturday</option><option>Sunday</option>
+                        </select>
+                        <input type="time" id="schedStart" class="input-field">
+                        <input type="time" id="schedEnd" class="input-field">
+                        <div class="color-picker-wrap">
+                            <label>Color</label>
+                            <input type="color" id="schedColor" value="#4F46E5" class="color-picker-input">
+                        </div>
+                        <button onclick="addScheduleEvent()" class="btn-primary" style="margin:0;">Add Event</button>
+                    </div>
+                </div>
+                <div class="section">
+                    <h3>📅 Weekly Schedule</h3>
+                    <div id="weekGrid" class="week-grid"></div>
                 </div>
             </div>
 
             <!-- Community Page -->
             <div id="page-community" class="content-page" style="display: none;">
-                <div class="section" style="margin-bottom: 30px;">
-                    <h3>Community Feed</h3>
-                    <div style="display: flex; gap: 15px;">
-                        <img id="communityUserAvatar" src="https://ui-avatars.com/api/?name=User&background=random" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
-                        <div style="flex: 1;">
-                            <textarea id="newPostText" placeholder="Share your thoughts or ask a question..." class="input-field" style="resize: none; min-height: 80px;"></textarea>
-                            <button onclick="addPost()" class="btn-primary" style="width: auto; float: right;">Post</button>
-                        </div>
+                <div class="community-composer">
+                    <div class="composer-top">
+                        <img id="communityUserAvatar" src="https://ui-avatars.com/api/?name=User&background=random" class="composer-avatar" alt="Avatar">
+                        <textarea id="newPostText" placeholder="Share something with your peers... 💬" class="composer-textarea"></textarea>
+                    </div>
+                    <div class="composer-bottom">
+                        <select id="postCategory" class="input-field category-select">
+                            <option value="general">💬 General</option>
+                            <option value="question">❓ Question</option>
+                            <option value="resource">📚 Resource</option>
+                            <option value="achievement">🏆 Achievement</option>
+                        </select>
+                        <button onclick="addPost()" class="btn-primary composer-post-btn">Post</button>
                     </div>
                 </div>
-
-                <div id="communityFeed" style="display: flex; flex-direction: column; gap: 20px;">
-                    <!-- Posts will load here -->
-                </div>
+                <div id="communityFeed" class="community-feed"></div>
             </div>
 
             <!-- Learning Hub Page -->
@@ -389,6 +452,6 @@
         </div>
     </div>
 
-    <script src="as2.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
